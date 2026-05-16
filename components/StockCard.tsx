@@ -5,6 +5,8 @@ export interface StockCardData {
   code: string
   name: string
   summary: string
+  category?: string | null
+  kakutei_month?: string | null
   yuutai_yield: number | null
   dividend_yield: number | null
   min_investment: number | null
@@ -47,8 +49,8 @@ export default function StockCard({ stock }: StockCardProps) {
     <Link href={`/stock/${stock.code}`} className="block">
       <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer">
         <div className="flex items-start justify-between gap-2 mb-2">
-          <div>
-            <h3 className="font-semibold text-gray-900 text-sm leading-tight">{stock.name}</h3>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900 text-sm leading-snug break-words">{stock.name}</h3>
             <p className="text-xs text-gray-500 mt-0.5">{stock.code}</p>
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">

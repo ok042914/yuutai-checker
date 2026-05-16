@@ -1,96 +1,80 @@
-import StockCard, { StockCardData } from '@/components/StockCard'
+export const dynamic = 'force-dynamic'
+
 import Link from 'next/link'
+import { createServerClient } from '@/lib/supabase'
+import CategoryBrowser from '@/components/CategoryBrowser'
+import { StockCardData } from '@/components/StockCard'
+import { calcTimingSignal } from '@/lib/riskScore'
 
-// デプロイ日時（更新確認用）
-const DEPLOY_DATE = '2026-05-16 12:00'
+const DEPLOY_DATE = '2026-05-17 01:12 JST'
 
-const CATEGORIES = [
-  { id: 'food', label: '飲食・グルメ', icon: '🍽️' },
-  { id: 'daily', label: '日常生活', icon: '🛒' },
-  { id: 'travel', label: '旅行・宿泊', icon: '✈️' },
-  { id: 'entertainment', label: 'エンタメ・レジャー', icon: '🎬' },
-  { id: 'health', label: '医療・健康', icon: '🏥' },
-  { id: 'fashion', label: 'ファッション・美容', icon: '👗' },
-  { id: 'home', label: 'ホームセンター・DIY', icon: '🔧' },
-  { id: 'books', label: '書籍・文具・教育', icon: '📚' },
-  { id: 'pet', label: 'ペット', icon: '🐾' },
-  { id: 'car', label: '車・移動', icon: '🚗' },
-  { id: 'it', label: 'IT・通信', icon: '💻' },
-  { id: 'finance', label: '金融・保険', icon: '🏦' },
-]
+async function fetchStocks(): Promise<StockCardData[]> {
+  try {
+    const supabase = createServerClient()
 
-// モックデータ（Supabase未接続時の表示用）
-const MOCK_STOCKS: StockCardData[] = [
-  {
-    code: '7974',
-    name: '任天堂',
-    summary: '株主向けギフト（カタログ品）',
-    yuutai_yield: 0.5,
-    dividend_yield: 1.8,
-    min_investment: 600000,
-    risk_score: 10,
-    risk_icon: '🟢',
-    timing_signal: 'accumulate',
-    timing_label: '閑散期（仕込み時）',
-  },
-  {
-    code: '9843',
-    name: 'ニトリホールディングス',
-    summary: '自社商品割引券（10%OFF）',
-    yuutai_yield: 0.3,
-    dividend_yield: 0.8,
-    min_investment: 180000,
-    risk_score: 15,
-    risk_icon: '🟢',
-    timing_signal: 'watch',
-    timing_label: '様子見',
-  },
-  {
-    code: '8267',
-    name: 'イオン',
-    summary: 'オーナーズカード（3〜7%キャッシュバック）',
-    yuutai_yield: 2.1,
-    dividend_yield: 0.8,
-    min_investment: 280000,
-    risk_score: 25,
-    risk_icon: '🟢',
-    timing_signal: 'buy',
-    timing_label: '権利落ち直後（狙い目）',
-  },
-  {
-    code: '4755',
-    name: '楽天グループ',
-    summary: '楽天市場ポイント',
-    yuutai_yield: 1.0,
-    dividend_yield: 0.0,
-    min_investment: 80000,
-    risk_score: 65,
-    risk_icon: '🔴',
-    timing_signal: 'avoid',
-    timing_label: '権利確定直前（割高注意）',
-  },
-  {
-    code: '3382',
-    name: 'セブン&アイ・ホールディングス',
-    summary: 'セブン-イレブン商品券',
-    yuutai_yield: 0.8,
-    dividend_yield: 2.0,
-    min_investment: 220000,
-    risk_score: 40,
-    risk_icon: '🟡',
-    timing_signal: 'watch',
-    timing_label: '様子見',
-  },
-]
+    const { data: stocks, error } = await supabase
+      .from('stocks')
+      .select(`
+        code, name, category, stock_price, min_investment,
+        yuutai ( summary, kakutei_month, kakutei_date, kenri_date, yuutai_yield ),
+        financials ( dividend_yield ),
+        risk_scores ( risk_score )
+      `)
+      .order('code')
+      .limit(2000)
 
-export default function HomePage() {
+    if (error || !stocks) {
+      console.error('Supabase fetch error:', error)
+      return []
+    }
+    console.log('取得件数:', stocks.length)
+    console.log('カテゴリサンプル:', stocks.slice(0, 3).map((s: any) => ({ code: s.code, category: s.category })))
+
+    return stocks.map((s: any) => {
+      const yuutai = Array.isArray(s.yuutai) ? s.yuutai[0] : s.yuutai
+      const financial = Array.isArray(s.financials) ? s.financials[0] : s.financials
+      const riskRow = Array.isArray(s.risk_scores) ? s.risk_scores[0] : s.risk_scores
+
+      const riskScore: number | null = riskRow?.risk_score ?? null
+      const riskIcon = riskScore === null ? '⚪' : riskScore <= 30 ? '🟢' : riskScore <= 60 ? '🟡' : '🔴'
+
+      const kakuteiDate = yuutai?.kakutei_date ? new Date(yuutai.kakutei_date) : null
+      const kenriDate = yuutai?.kenri_date ? new Date(yuutai.kenri_date) : null
+      const timing = calcTimingSignal(kenriDate, kakuteiDate)
+
+      return {
+        code: s.code,
+        name: s.name,
+        category: s.category ?? null,
+        kakutei_month: yuutai?.kakutei_month ?? null,
+        summary: yuutai?.summary ?? '',
+        yuutai_yield: yuutai?.yuutai_yield ?? null,
+        dividend_yield: financial?.dividend_yield ?? null,
+        min_investment: s.min_investment ?? null,
+        risk_score: riskScore,
+        risk_icon: riskIcon,
+        timing_signal: timing.signal,
+        timing_label: timing.label,
+      } satisfies StockCardData
+    })
+  } catch {
+    return []
+  }
+}
+
+export default async function HomePage() {
+  const stocks = await fetchStocks()
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ヘッダー */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold text-gray-900">株主優待チェッカー</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold text-gray-900">株主優待チェッカー</h1>
+              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{DEPLOY_DATE}</span>
+            </div>
             <p className="text-xs text-gray-400">好きなお店・サービスから銘柄を探す</p>
           </div>
           <Link
@@ -103,37 +87,9 @@ export default function HomePage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6">
-        {/* カテゴリグリッド */}
-        <section className="mb-8">
-          <h2 className="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wide">カテゴリから探す</h2>
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat.id}
-                className="flex flex-col items-center gap-1 p-3 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all text-center"
-              >
-                <span className="text-2xl">{cat.icon}</span>
-                <span className="text-xs text-gray-600 leading-tight">{cat.label}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* 銘柄一覧 */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">注目銘柄</h2>
-            <span className="text-xs text-gray-400">※ 現在モックデータ表示中</span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {MOCK_STOCKS.map(stock => (
-              <StockCard key={stock.code} stock={stock} />
-            ))}
-          </div>
-        </section>
+        <CategoryBrowser stocks={stocks} />
       </main>
 
-      {/* フッター（デプロイ日時表示） */}
       <footer className="mt-12 border-t border-gray-200 py-4 text-center text-xs text-gray-400">
         <p>株主優待チェッカー</p>
         <p className="mt-1">更新日時: {DEPLOY_DATE}</p>
