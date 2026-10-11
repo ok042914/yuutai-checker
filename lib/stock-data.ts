@@ -9,12 +9,17 @@ export async function fetchAllPages<T>(fetchPage: (from: number, to: number) => 
   }
 }
 
-export function latestRow<T extends object>(rows: T[], key: keyof T): T | null {
-  return [...rows].sort((a, b) => String(b[key] ?? '').localeCompare(String(a[key] ?? '')))[0] ?? null
+/** PostgREST returns one-to-one relations as an object and one-to-many relations as arrays. */
+export function relationRows<T>(value: T | T[] | null | undefined): T[] {
+  return value == null ? [] : Array.isArray(value) ? value : [value]
 }
 
-export function latestFinancial<T extends { year: number | null; updated_at: string | null }>(rows: T[]): T | null {
-  return [...rows].sort((a, b) => (b.year ?? -Infinity) - (a.year ?? -Infinity)
+export function latestRow<T extends object>(rows: T | T[] | null | undefined, key: keyof T): T | null {
+  return [...relationRows(rows)].sort((a, b) => String(b[key] ?? '').localeCompare(String(a[key] ?? '')))[0] ?? null
+}
+
+export function latestFinancial<T extends { year: number | null; updated_at: string | null }>(rows: T | T[] | null | undefined): T | null {
+  return [...relationRows(rows)].sort((a, b) => (b.year ?? -Infinity) - (a.year ?? -Infinity)
     || (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))[0] ?? null
 }
 

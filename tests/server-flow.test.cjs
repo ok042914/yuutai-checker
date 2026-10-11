@@ -27,7 +27,7 @@ global.fetch = async (input, init) => {
     if(url.searchParams.has('code')) rows=url.searchParams.get('code')==='eq.1000'?[stock]:[]
     else {
       const offset=Number(url.searchParams.get('offset')||0), limit=Number(url.searchParams.get('limit')||1000)
-      rows=Array.from({length:1005},(_,i)=>({...stock,code:String(1000+i),name:`検証銘柄${i}`,yuutai:[yuutai],financials,risk_scores:risks})).slice(offset,offset+limit)
+      rows=Array.from({length:1005},(_,i)=>({...stock,code:String(1000+i),name:`検証銘柄${i}`,yuutai:mode==='singleRelation'?yuutai:mode==='nullRelation'?null:[yuutai],financials:mode==='singleRelation'?financials[1]:mode==='nullRelation'?null:financials,risk_scores:mode==='singleRelation'?risks[1]:mode==='nullRelation'?null:risks})).slice(offset,offset+limit)
     }
   } else if(table==='yuutai') rows=mode==='missing'?[]:[yuutai]
   else if(table==='financials') rows=mode==='missing'?[]:[financials[1],financials[0]]
@@ -43,7 +43,9 @@ global.fetch = async (input, init) => {
   assert(body.includes('検証銘柄1004'))
   assert(body.includes('5.00%'))
   assert(requests.some(r=>r.offset==='500') && requests.some(r=>r.offset==='1000'))
-  body=await detail('1000')
+  mode='singleRelation';body=await list();assert(body.includes('5.00%'));assert(body.includes('検証銘柄1004'))
+  mode='nullRelation';body=await list();assert(body.includes('データなし'));assert(body.includes('検証銘柄1004'))
+  mode='ok';body=await detail('1000')
   assert(body.includes('検証銘柄'))
   assert(body.includes('5.00'))
   assert(body.includes('低リスク'))

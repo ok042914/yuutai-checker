@@ -6,7 +6,7 @@ const Module = require('node:module')
 const resolve = Module._resolveFilename
 Module._resolveFilename = function(id, ...args) { return resolve.call(this, id.startsWith('@/') ? path.join(__dirname, '..', id.slice(2)) : id, ...args) }
 for (const ext of ['.ts', '.tsx']) require.extensions[ext] = (module, filename) => module._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText, filename)
-const { fetchAllPages, latestRow, latestFinancial, combinedYield, filterStocks } = require('../lib/stock-data.ts')
+const { fetchAllPages, latestRow, latestFinancial, combinedYield, filterStocks, relationRows } = require('../lib/stock-data.ts')
 const React = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
 const card = require('../components/StockCard.tsx').default
@@ -22,6 +22,14 @@ const base = {code:'1000',name:'テストＡ',summary:'ＱＵＯカード',kakut
   await assert.rejects(fetchAllPages(async from=>{if(from) throw Error('failed');return Array(500).fill(0)}))
   assert.equal(latestRow([{at:null},{at:'2026-01-01'},{at:'2025-01-01'}],'at').at,'2026-01-01')
   assert.equal(latestFinancial([{year:2025,updated_at:'2026-01-01',value:1},{year:2026,updated_at:'2026-01-02',value:2},{year:2026,updated_at:'2026-01-03',value:3}]).value,3)
+  assert.deepEqual(relationRows(null), [])
+  assert.deepEqual(relationRows(undefined), [])
+  assert.deepEqual(relationRows({value:1}), [{value:1}])
+  assert.deepEqual(relationRows([{value:1},{value:2}]), [{value:1},{value:2}])
+  assert.equal(latestRow({at:'2026-01-01'},'at').at,'2026-01-01')
+  assert.equal(latestRow(null,'at'), null)
+  assert.equal(latestFinancial(null), null)
+  assert.equal(latestFinancial({year:2026,updated_at:null,value:1}).value,1)
   assert.equal(combinedYield(null,6),null)
   assert.equal(combinedYield(0,0),0)
   assert.equal(filterStocks([base], 'テストa','9月末',true).length,1)

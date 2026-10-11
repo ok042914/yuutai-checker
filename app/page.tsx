@@ -4,10 +4,10 @@ import Link from 'next/link'
 import { createServerClient } from '@/lib/supabase'
 import CategoryBrowser from '@/components/CategoryBrowser'
 import { StockCardData } from '@/components/StockCard'
-import { fetchAllPages, latestRow, latestFinancial } from '@/lib/stock-data'
+import { fetchAllPages, latestRow, latestFinancial, relationRows } from '@/lib/stock-data'
 import { calcTimingSignal } from '@/lib/riskScore'
 
-const DEPLOY_DATE = '2026-10-11 22:46 JST'
+const DEPLOY_DATE = '2026-10-11 22:59 JST'
 
 async function fetchStocks(): Promise<StockCardData[]> {
   const supabase = createServerClient()
@@ -22,7 +22,10 @@ async function fetchStocks(): Promise<StockCardData[]> {
       `)
       .order('code')
       .range(from, to)
-    if (error || !data) throw new Error('銘柄一覧を取得できませんでした')
+    if (error || !data) {
+      console.error('Stock list query failed', { code: error?.code ?? 'NO_DATA' })
+      throw new Error('銘柄一覧を取得できませんでした')
+    }
     return data
   })
 
@@ -37,7 +40,7 @@ async function fetchStocks(): Promise<StockCardData[]> {
     )
     return {
       code: s.code, name: s.name, category: s.category ?? null,
-      kakutei_month: s.yuutai.map(y => y.kakutei_month).filter(Boolean).join('、'),
+      kakutei_month: relationRows(s.yuutai).map(y => y.kakutei_month).filter(Boolean).join('、'),
       summary: yuutai?.summary ?? '',
       yuutai_yield: yuutai?.yuutai_yield ?? null,
       dividend_yield: financial?.dividend_yield ?? null,
