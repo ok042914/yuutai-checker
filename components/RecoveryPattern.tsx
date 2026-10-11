@@ -39,14 +39,13 @@ function formatDate(date: string | Date): string {
 
 function calcAvgRecoveryDays(data: PriceHistoryRow[]): string {
   const days = data.map(r => r.recovery_days).filter((v): v is number => v !== null)
-  if (days.length === 0) return '-'
+  if (days.length === 0) return 'データなし'
   const avg = days.reduce((s, v) => s + v, 0) / days.length
   return `${Math.round(avg)}日`
 }
 
 function calcAllRecovered(data: PriceHistoryRow[]): boolean {
-  const relevant = data.filter(r => r.recovery_days !== null)
-  return relevant.length > 0 && relevant.every(r => r.recovery_days !== null && r.recovery_days > 0)
+  return data.length > 0 && data.every(r => r.recovery_days !== null && r.recovery_days >= 0)
 }
 
 export default function RecoveryPattern({ data }: RecoveryPatternProps) {
@@ -72,7 +71,7 @@ export default function RecoveryPattern({ data }: RecoveryPatternProps) {
         <div className="bg-gray-50 rounded-lg px-3 py-2 flex-1 text-center">
           <p className="text-xs text-gray-400 mb-0.5">全年回復</p>
           <p className="font-semibold">
-            {allRecovered ? <span className="text-green-600">✅ 全年回復</span> : <span className="text-orange-500">⚠️ 未回復あり</span>}
+            {data.some(row => row.recovery_days === null) ? <span className="text-gray-500">データ不足（判定不可）</span> : allRecovered ? <span className="text-green-600">✅ 全年回復</span> : <span className="text-orange-500">⚠️ 未回復あり</span>}
           </p>
         </div>
       </div>

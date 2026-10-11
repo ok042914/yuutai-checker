@@ -4,62 +4,50 @@ import Link from 'next/link'
 import { createServerClient } from '@/lib/supabase'
 import CategoryBrowser from '@/components/CategoryBrowser'
 import { StockCardData } from '@/components/StockCard'
+import { fetchAllPages, latestRow, latestFinancial } from '@/lib/stock-data'
 import { calcTimingSignal } from '@/lib/riskScore'
 
-const DEPLOY_DATE = '2026-05-17 01:12 JST'
+const DEPLOY_DATE = '2026-10-11 22:46 JST'
 
 async function fetchStocks(): Promise<StockCardData[]> {
-  try {
-    const supabase = createServerClient()
-
-    const { data: stocks, error } = await supabase
+  const supabase = createServerClient()
+  const stocks = await fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase
       .from('stocks')
       .select(`
         code, name, category, stock_price, min_investment,
-        yuutai ( summary, kakutei_month, kakutei_date, kenri_date, yuutai_yield ),
-        financials ( dividend_yield ),
-        risk_scores ( risk_score )
+        yuutai ( summary, kakutei_month, kakutei_date, kenri_date, yuutai_yield, updated_at ),
+        financials ( dividend_yield, year, updated_at ),
+        risk_scores ( risk_score, calculated_at )
       `)
       .order('code')
-      .limit(2000)
+      .range(from, to)
+    if (error || !data) throw new Error('銘柄一覧を取得できませんでした')
+    return data
+  })
 
-    if (error || !stocks) {
-      console.error('Supabase fetch error:', error)
-      return []
-    }
-    console.log('取得件数:', stocks.length)
-    console.log('カテゴリサンプル:', stocks.slice(0, 3).map((s: any) => ({ code: s.code, category: s.category })))
-
-    return stocks.map((s: any) => {
-      const yuutai = Array.isArray(s.yuutai) ? s.yuutai[0] : s.yuutai
-      const financial = Array.isArray(s.financials) ? s.financials[0] : s.financials
-      const riskRow = Array.isArray(s.risk_scores) ? s.risk_scores[0] : s.risk_scores
-
-      const riskScore: number | null = riskRow?.risk_score ?? null
-      const riskIcon = riskScore === null ? '⚪' : riskScore <= 30 ? '🟢' : riskScore <= 60 ? '🟡' : '🔴'
-
-      const kakuteiDate = yuutai?.kakutei_date ? new Date(yuutai.kakutei_date) : null
-      const kenriDate = yuutai?.kenri_date ? new Date(yuutai.kenri_date) : null
-      const timing = calcTimingSignal(kenriDate, kakuteiDate)
-
-      return {
-        code: s.code,
-        name: s.name,
-        category: s.category ?? null,
-        kakutei_month: yuutai?.kakutei_month ?? null,
-        summary: yuutai?.summary ?? '',
-        yuutai_yield: yuutai?.yuutai_yield ?? null,
-        dividend_yield: financial?.dividend_yield ?? null,
-        min_investment: s.min_investment ?? null,
-        risk_score: riskScore,
-        risk_icon: riskIcon,
-        timing_signal: timing.signal,
-        timing_label: timing.label,
-      } satisfies StockCardData
-    })
-  } catch {
-    return []
-  }
+  return stocks.map(s => {
+    const yuutai = latestRow(s.yuutai, 'updated_at')
+    const financial = latestFinancial(s.financials)
+    const riskRow = latestRow(s.risk_scores, 'calculated_at')
+    const riskScore = riskRow?.risk_score ?? null
+    const timing = calcTimingSignal(
+      yuutai?.kenri_date ? new Date(yuutai.kenri_date) : null,
+      yuutai?.kakutei_date ? new Date(yuutai.kakutei_date) : null
+    )
+    return {
+      code: s.code, name: s.name, category: s.category ?? null,
+      kakutei_month: s.yuutai.map(y => y.kakutei_month).filter(Boolean).join('、'),
+      summary: yuutai?.summary ?? '',
+      yuutai_yield: yuutai?.yuutai_yield ?? null,
+      dividend_yield: financial?.dividend_yield ?? null,
+      min_investment: s.min_investment ?? null,
+      risk_score: riskScore,
+      risk_icon: riskScore === null ? '⚪' : riskScore <= 30 ? '🟢' : riskScore <= 60 ? '🟡' : '🔴',
+      timing_signal: timing.signal, timing_label: timing.label,
+      financial_updated_at: financial?.updated_at ?? null,
+    } satisfies StockCardData
+  })
 }
 
 export default async function HomePage() {
